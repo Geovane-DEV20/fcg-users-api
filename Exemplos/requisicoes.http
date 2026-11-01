@@ -1,0 +1,87 @@
+### Variáveis
+@baseUrl = https://localhost:5001
+@apiUrl = {{baseUrl}}/api/usuarios
+
+### 1. Cadastrar novo usuário
+POST {{apiUrl}}
+Content-Type: application/json
+
+{
+  "nome": "João Silva",
+  "email": "joao.silva@example.com",
+  "senha": "SenhaForte123!"
+}
+
+### 2. Cadastrar outro usuário
+POST {{apiUrl}}
+Content-Type: application/json
+
+{
+  "nome": "Maria Santos",
+  "email": "maria.santos@example.com",
+  "senha": "Senha@Forte456"
+}
+
+### 3. Tentar cadastrar com email duplicado (deve retornar erro 409)
+POST {{apiUrl}}
+Content-Type: application/json
+
+{
+  "nome": "Pedro Souza",
+  "email": "joao.silva@example.com",
+  "senha": "OutraSenha789!"
+}
+
+### 4. Tentar cadastrar com senha fraca (deve retornar erro 400)
+POST {{apiUrl}}
+Content-Type: application/json
+
+{
+  "nome": "Ana Costa",
+  "email": "ana.costa@example.com",
+  "senha": "123456"
+}
+
+### 5. Tentar cadastrar com email inválido (deve retornar erro 400)
+POST {{apiUrl}}
+Content-Type: application/json
+
+{
+  "nome": "Carlos Oliveira",
+  "email": "email-invalido",
+  "senha": "SenhaForte123!"
+}
+
+### 6. Confirmar email (substituir TOKEN pelo valor retornado no cadastro)
+POST {{apiUrl}}/ativacao
+Content-Type: application/json
+
+{
+  "token": "SEU_TOKEN_AQUI"
+}
+
+### 7. Obter usuário por ID (substituir ID)
+GET {{apiUrl}}/3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+### 8. Listar usuários (primeira página)
+GET {{apiUrl}}?pagina=1&tamanhoPagina=10
+
+### 9. Atualizar dados do usuário (substituir ID)
+PUT {{apiUrl}}/3fa85f64-5717-4562-b3fc-2c963f66afa6
+Content-Type: application/json
+
+{
+  "nome": "João da Silva Santos"
+}
+
+### 10. Alterar senha (substituir ID)
+PUT {{apiUrl}}/3fa85f64-5717-4562-b3fc-2c963f66afa6/senha
+Content-Type: application/json
+
+{
+  "senhaAtual": "SenhaForte123!",
+  "novaSenha": "NovaSenha@456!"
+}
+
+### 11. Health check
+GET {{baseUrl}}/swagger/index.html
