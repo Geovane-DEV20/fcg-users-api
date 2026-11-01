@@ -10,7 +10,12 @@ public sealed record ConfirmarEmailRequest(string Token);
 
 public sealed record LoginRequest(string Email, string Senha);
 
-public sealed record LoginResponse(string Token);
+public sealed record LoginResponse
+{
+    public string Token { get; init; } = string.Empty;
+    public int ExpiresIn { get; init; }
+    public UsuarioResponse Usuario { get; init; } = null!;
+}
 
 public sealed record AtualizarDadosRequest(string Nome);
 

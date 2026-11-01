@@ -18,6 +18,8 @@ API de microsserviço para gerenciamento de cadastro de usuários, extraída do 
 - ✅ **Proteção contra tentativas de login** (bloqueio após 5 falhas)
 - ✅ **Status da conta** (Pendente Ativação, Ativa, Desativada)
 - ✅ **Perfis de usuário** (Usuario, Administrador)
+- ✅ **Autenticação JWT** com autorização baseada em perfis
+- ✅ **Comunicação assíncrona** via RabbitMQ (eventos de domínio)
 
 ## 🏗️ Arquitetura
 
@@ -73,6 +75,9 @@ Content-Type: application/json
 ### Obter Usuário por ID
 ```http
 GET /api/usuarios/{id}
+```http
+GET /api/usuarios/{id}
+Authorization: Bearer TOKEN
 ```
 
 **Resposta (200 OK):**
@@ -87,9 +92,10 @@ GET /api/usuarios/{id}
 }
 ```
 
-### Atualizar Dados
+#### Atualizar Dados
 ```http
 PUT /api/usuarios/{id}
+Authorization: Bearer TOKEN
 Content-Type: application/json
 
 {
@@ -97,9 +103,10 @@ Content-Type: application/json
 }
 ```
 
-### Alterar Senha
+#### Alterar Senha
 ```http
 PUT /api/usuarios/{id}/senha
+Authorization: Bearer TOKEN
 Content-Type: application/json
 
 {
@@ -108,9 +115,23 @@ Content-Type: application/json
 }
 ```
 
-### Listar Usuários (Paginado)
+### 👑 Admin (Apenas Administradores)
+
+#### Listar Usuários (Paginado)
 ```http
 GET /api/usuarios?pagina=1&tamanhoPagina=20
+Authorization: Bearer TOKEN_ADMIN
+```
+
+#### Alterar Perfil
+```http
+PATCH /api/usuarios/{id}/perfil
+Authorization: Bearer TOKEN_ADMIN
+Content-Type: application/json
+
+{
+  "perfil": "Administrador"
+}
 ```
 
 ## 🔒 Regras de Negócio
@@ -149,6 +170,8 @@ GET /api/usuarios?pagina=1&tamanhoPagina=20
 - **Entity Framework Core 8.0**
 - **Entity Framework InMemory** (desenvolvimento)
 - **SQL Server** (produção - configurável)
+- **JWT Bearer Authentication**
+- **RabbitMQ** (mensageria e eventos)
 - **Swagger/OpenAPI** (documentação)
 
 ## 🗄️ Banco de Dados Dedicado
@@ -166,6 +189,7 @@ Esta API segue o padrão **Database per Service**:
 
 ### Pré-requisitos
 - .NET 8.0 SDK
+- Docker (para RabbitMQ - opcional mas recomendado)
 - SQL Server (opcional, para produção)
 
 ### Passos
@@ -175,15 +199,29 @@ Esta API segue o padrão **Database per Service**:
 dotnet restore
 ```
 
-2. **Executar a aplicação:**
+2. **Subir RabbitMQ (Docker - recomendado):**
+```powershell
+docker-compose -f docker-compose.rabbitmq.yml up -d
+```
+
+3. **Executar a aplicação:**
 ```powershell
 dotnet run
 ```
 
-3. **Acessar o Swagger:**
+4. **Acessar o Swagger:**
 ```
-https://localhost:5001/swagger
+http://localhost:62306/swagger
 ```
+
+5. **Acessar RabbitMQ Management (opcional):**
+```
+http://localhost:15672
+Usuário: guest
+Senha: guest
+```
+
+> 📖 **Guia Rápido RabbitMQ:** Veja [GUIA_RABBITMQ.md](GUIA_RABBITMQ.md) para mais detalhes sobre eventos e mensageria.
 
 ### Configuração do Banco de Dados
 
@@ -215,28 +253,55 @@ dotnet ef database update
 
 > 💡 **Importante**: Esta API tem seu **próprio banco de dados dedicado** (`FcgUsersDb`). Outros microsserviços NÃO devem acessar este banco diretamente.
 
+## 🔄 Eventos de Domínio (RabbitMQ)
+
+A API publica eventos assíncronos via RabbitMQ para comunicação com outros microsserviços:
+
+| Evento | Routing Key | Quando é Disparado |
+|--------|-------------|-------------------|
+| **UsuarioCriado** | `users.created` | Novo usuário se cadastra |
+| **ContaAtivada** | `users.activated` | Usuário confirma email |
+| **SenhaAlterada** | `users.password.changed` | Usuário altera senha |
+| **PerfilAlterado** | `users.profile.changed` | Admin altera perfil |
+
+**Padrão de Comunicação:** 100% assíncrono via message broker (eventual consistency)  
+**Health Check:** `GET /health` (verifica status do RabbitMQ)
+
+> 📖 Veja documentação completa em [GUIA_RABBITMQ.md](GUIA_RABBITMQ.md) e [COMUNICACAO_ASSINCRONA_IMPLEMENTACAO.md](Documentacao/COMUNICACAO_ASSINCRONA_IMPLEMENTACAO.md)
+
+---
+
 ## 🔄 Próximos Passos (TODOs)
 
-- [ ] Implementar message broker (RabbitMQ/Azure Service Bus) para comunicação assíncrona
-- [ ] Adicionar eventos de domínio (UsuarioCriado, EmailConfirmado, etc.)
-- [ ] Implementar publicação de eventos no CadastroService
-- [ ] Implementar envio de email de ativação via evento
-- [ ] Adicionar autenticação JWT
-- [ ] Implementar autorização baseada em perfis
-- [ ] Implementar health checks (incluindo verificação do banco de dados e message broker)
-- [ ] Adicionar logging estruturado (Serilog)
+- [x] ~~Adicionar autenticação JWT~~ ✅ **COMPLETO!**
+- [x] ~~Implementar autorização baseada em perfis~~ ✅ **COMPLETO!**
+- [x] ~~Implementar eventos de domínio~~ ✅ **COMPLETO!**
+- [x] ~~Implementar publicação de eventos no CadastroService~~ ✅ **COMPLETO!**
+- [x] ~~Implementar message broker (RabbitMQ)~~ ✅ **COMPLETO!**
+- [ ] Criar microsserviço de Notificações (consumer de eventos para envio de emails)
+- [ ] Criar microsserviço de Library (consumer de ContaAtivada)
+- [ ] Criar microsserviço de Audit (consumer de todos os eventos)
+- [ ] Implementar Refresh Tokens
+- [ ] Implementar Dead Letter Queue (DLQ) para eventos com falha
+- [ ] Implementar Outbox Pattern (publicação transacional)
+- [ ] Adicionar health checks avançados (DB + RabbitMQ + latência)
+- [ ] Adicionar logging estruturado (Serilog + ELK Stack)
 - [ ] Implementar rate limiting
 - [ ] Adicionar testes unitários e de integração
+- [ ] Implementar observabilidade (OpenTelemetry + Jaeger)
 - [ ] Configurar CI/CD pipeline
 - [ ] Deploy em ambiente de produção com SQL Server dedicado
 
 > 📖 **Leia também:**
-> - [Comunicação Assíncrona](Documentacao/COMUNICACAO_ASSINCRONA.md) - **Event-Driven Architecture**
-> - [Estratégia de Banco de Dados](Documentacao/ESTRATEGIA_BANCO_DADOS.md) - Como funciona o banco dedicado
-> - [Diagrama de Microsserviços](Documentacao/DIAGRAMA_MICROSSERVICOS.md) - Arquitetura completa
-> - [Arquitetura](Documentacao/ARQUITETURA.md) - Visão detalhada da estrutura
+> - [Guia RabbitMQ](GUIA_RABBITMQ.md) - **Mensageria e eventos** ⭐ NOVO  
+> - [Changelog Eventos](CHANGELOG_EVENTOS.md) - **Detalhes da implementação** ⭐ NOVO  
+> - [Comunicação Assíncrona (Implementação)](Documentacao/COMUNICACAO_ASSINCRONA_IMPLEMENTACAO.md) - **Detalhes técnicos** ⭐ NOVO  
+> - [Autenticação JWT](Documentacao/AUTENTICACAO_JWT.md) - Guia completo de autenticação  
+> - [Comunicação Assíncrona](Documentacao/COMUNICACAO_ASSINCRONA.md) - Event-Driven Architecture  
+> - [Estratégia de Banco de Dados](Documentacao/ESTRATEGIA_BANCO_DADOS.md) - Como funciona o banco dedicado  
+> - [Diagrama de Microsserviços](Documentacao/DIAGRAMA_MICROSSERVICOS.md) - Arquitetura completa  
+> - [Arquitetura](Documentacao/ARQUITETURA.md) - Visão detalhada da estrutura  
 > - [Comparação com Monolito](Documentacao/COMPARACAO_MONOLITO.md) - O que mudou
-> - [Guia Rápido](Documentacao/GUIA_RAPIDO.md) - Tutorial prático
 
 ## 📝 Tratamento de Erros
 
