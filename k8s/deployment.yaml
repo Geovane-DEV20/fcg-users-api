@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fcg-users-api
+  labels:
+    app: fcg-users-api
 spec:
   replicas: 2
   selector:
@@ -15,5 +17,55 @@ spec:
       containers:
       - name: fcg-users-api
         image: fcg-users-api:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:8080"
+        - name: Jwt__Secret
+          valueFrom:
+            secretKeyRef:
+              name: fcg-users-secret
+              key: jwt-secret
+        - name: RabbitMQ__Host
+          valueFrom:
+            configMapKeyRef:
+              name: fcg-users-config
+              key: rabbitmq-host
+        - name: RabbitMQ__Port
+          valueFrom:
+            configMapKeyRef:
+              name: fcg-users-config
+              key: rabbitmq-port
+        - name: RabbitMQ__Username
+          valueFrom:
+            configMapKeyRef:
+              name: fcg-users-config
+              key: rabbitmq-username
+        - name: RabbitMQ__Password
+          valueFrom:
+            secretKeyRef:
+              name: fcg-users-secret
+              key: rabbitmq-password
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /api/users
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/users
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5

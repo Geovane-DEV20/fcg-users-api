@@ -1,75 +1,43 @@
-using Microsoft.AspNetCore.Authorization;
+using FcgUsersApi.Models;
+using FcgUsersApi.Services;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
-using fcg_users_api.DTOs;
-using fcg_users_api.Middlewares;
-using fcg_users_api.Services;
 
-namespace fcg_users_api.Controllers;
+namespace FcgUsersApi.Controllers;
 
 [ApiController]
-[Route("api/auth")]
-[Produces("application/json")]
+[Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly AuthService _authService;
-    private readonly ILogger<AuthController> _logger;
+    private readonly IAuthService _authService;
 
-    public AuthController(AuthService authService, ILogger<AuthController> logger)
+    public AuthController(IAuthService authService)
     {
         _authService = authService;
-        _logger = logger;
     }
 
-    /// <summary>
-    /// Realiza login e retorna um token JWT.
-    /// </summary>
-    /// <param name="request">Credenciais de login (email e senha)</param>
-    /// <param name="cancellationToken">Token de cancelamento</param>
-    /// <returns>Token JWT e informações do usuário</returns>
-    [HttpPost("login")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status422UnprocessableEntity)]
-    public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
+    [HttpPost("register")]
+    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        var response = await _authService.LoginAsync(request, cancellationToken);
+        var response = await _authService.Register(request);
+        
+        if (response == null)
+        {
+            return BadRequest(new { message = "Email já cadastrado" });
+        }
+
         return Ok(response);
     }
 
-    /// <summary>
-    /// Obtém informações do usuário atualmente autenticado.
-    /// </summary>
-    /// <param name="cancellationToken">Token de cancelamento</param>
-    /// <returns>Dados do usuário logado</returns>
-    [HttpGet("me")]
-    [Authorize]
-    [ProducesResponseType(typeof(UsuarioResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> ObterUsuarioAtual(CancellationToken cancellationToken)
+    [HttpPost("login")]
+    public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
-        var usuarioId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var usuario = await _authService.ObterUsuarioAtualAsync(usuarioId, cancellationToken);
-        return Ok(usuario);
-    }
+        var response = await _authService.Login(request);
+        
+        if (response == null)
+        {
+            return Unauthorized(new { message = "Email ou senha inválidos" });
+        }
 
-    /// <summary>
-    /// Realiza logout (placeholder - JWT é stateless).
-    /// </summary>
-    /// <returns>Confirmação de logout</returns>
-    [HttpPost("logout")]
-    [Authorize]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public IActionResult Logout()
-    {
-        // JWT é stateless, então o logout é feito no cliente (descartando o token)
-        // Aqui podemos adicionar o token a uma blacklist se necessário
-        
-        _logger.LogInformation("Usuário {UsuarioId} fez logout", User.FindFirstValue(ClaimTypes.NameIdentifier));
-        
-        return NoContent();
+        return Ok(response);
     }
 }

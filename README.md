@@ -1,332 +1,65 @@
-# FCG Users API - Microsserviço de Usuários
+# FCG Users API
 
-API de microsserviço para gerenciamento de cadastro de usuários, extraída do monolito **Fiap.Cloud.Games** seguindo os padrões DDD (Domain-Driven Design).
+Microsserviço responsável por gerenciar cadastro, autenticação JWT e autorização de usuários da plataforma FIAP Cloud Games.
 
-> 🎯 **Objetivo:** Separar a lógica de cadastro de usuários em um microsserviço independente, mantendo 100% das regras de negócio do monolito original.
+## Funcionalidades
 
-## 📋 Funcionalidades
+- Cadastro de usuários
+- Autenticação com JWT
+- Listagem de usuários (protegido)
+- Publicação de evento `UserCreatedEvent` para o RabbitMQ quando um novo usuário é cadastrado
 
-- ✅ **Cadastro de usuários** com validação robusta
-- ✅ **Validação de email** com regex
-- ✅ **Validação de senha** (mínimo 8 caracteres, letra, número e caractere especial)
-- ✅ **Hash de senha** usando PBKDF2 com SHA256
-- ✅ **Token de ativação** com expiração de 24 horas
-- ✅ **Confirmação de email** via token
-- ✅ **Atualização de dados** cadastrais
-- ✅ **Alteração de senha** com verificação da senha atual
-- ✅ **Listagem paginada** de usuários
-- ✅ **Proteção contra tentativas de login** (bloqueio após 5 falhas)
-- ✅ **Status da conta** (Pendente Ativação, Ativa, Desativada)
-- ✅ **Perfis de usuário** (Usuario, Administrador)
-- ✅ **Autenticação JWT** com autorização baseada em perfis
-- ✅ **Comunicação assíncrona** via RabbitMQ (eventos de domínio)
+## Tecnologias
 
-## 🏗️ Arquitetura
+- .NET 8
+- ASP.NET Core Web API
+- Entity Framework Core (InMemory Database)
+- JWT Bearer Authentication
+- RabbitMQ.Client
+- Swagger/OpenAPI
 
-A API foi desenvolvida seguindo os princípios de **Domain-Driven Design (DDD)**:
+## Variáveis de Ambiente
 
-```
-fcg-users-api/
-├── Controllers/           # Camada de apresentação (API endpoints)
-├── Services/             # Casos de uso / Application layer
-├── Models/               # Entidades de domínio
-│   ├── ValueObjects/    # Objetos de valor (Email, Senha)
-│   └── Enums/           # Enumerações (Perfil, StatusConta)
-├── Repositories/         # Interfaces e implementações de repositório
-├── Data/                # Contexto do Entity Framework
-├── DTOs/                # Data Transfer Objects
-├── Exceptions/          # Exceções de domínio customizadas
-└── Middlewares/         # Middleware de tratamento de exceções
-```
+- `Jwt__Secret`: Chave secreta para assinatura do JWT
+- `RabbitMQ__Host`: Hostname do servidor RabbitMQ (padrão: localhost)
+- `RabbitMQ__Port`: Porta do RabbitMQ (padrão: 5672)
+- `RabbitMQ__Username`: Usuário do RabbitMQ (padrão: guest)
+- `RabbitMQ__Password`: Senha do RabbitMQ (padrão: guest)
 
-## 🚀 Endpoints da API
+## Como Executar
 
-### Cadastro de Usuário
-```http
-POST /api/usuarios
-Content-Type: application/json
+### Com .NET CLI
 
-{
-  "nome": "João Silva",
-  "email": "joao@example.com",
-  "senha": "SenhaForte123!"
-}
-```
-
-**Resposta (201 Created):**
-```json
-{
-  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
-}
-```
-
-### Confirmação de Email
-```http
-POST /api/usuarios/ativacao
-Content-Type: application/json
-
-{
-  "token": "abc123def456"
-}
-```
-
-**Resposta:** 204 No Content
-
-### Obter Usuário por ID
-```http
-GET /api/usuarios/{id}
-```http
-GET /api/usuarios/{id}
-Authorization: Bearer TOKEN
-```
-
-**Resposta (200 OK):**
-```json
-{
-  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "nome": "João Silva",
-  "email": "joao@example.com",
-  "perfil": "Usuario",
-  "status": "Ativa",
-  "criadoEm": "2024-01-15T10:30:00Z"
-}
-```
-
-#### Atualizar Dados
-```http
-PUT /api/usuarios/{id}
-Authorization: Bearer TOKEN
-Content-Type: application/json
-
-{
-  "nome": "João da Silva"
-}
-```
-
-#### Alterar Senha
-```http
-PUT /api/usuarios/{id}/senha
-Authorization: Bearer TOKEN
-Content-Type: application/json
-
-{
-  "senhaAtual": "SenhaAntiga123!",
-  "novaSenha": "SenhaNova456!"
-}
-```
-
-### 👑 Admin (Apenas Administradores)
-
-#### Listar Usuários (Paginado)
-```http
-GET /api/usuarios?pagina=1&tamanhoPagina=20
-Authorization: Bearer TOKEN_ADMIN
-```
-
-#### Alterar Perfil
-```http
-PATCH /api/usuarios/{id}/perfil
-Authorization: Bearer TOKEN_ADMIN
-Content-Type: application/json
-
-{
-  "perfil": "Administrador"
-}
-```
-
-## 🔒 Regras de Negócio
-
-### Validação de Email
-- Formato válido (regex: `^[^@\s]+@[^@\s]+\.[^@\s]+$`)
-- Único no sistema (não permite duplicação)
-
-### Validação de Senha
-- Mínimo de 8 caracteres
-- Deve conter pelo menos:
-  - Uma letra
-  - Um número
-  - Um caractere especial
-- Hash gerado com PBKDF2 (100.000 iterações, SHA256)
-
-### Token de Ativação
-- Gerado automaticamente no cadastro
-- Validade de 24 horas
-- Invalidado após confirmação
-
-### Bloqueio de Conta
-- Após 5 tentativas consecutivas de autenticação falhadas
-- Bloqueio temporário de 15 minutos
-- Contador zerado após login bem-sucedido
-
-### Status da Conta
-1. **PendenteAtivacao**: Conta recém-criada aguardando confirmação de email
-2. **Ativa**: Conta confirmada e pronta para uso
-3. **Desativada**: Conta desabilitada (não pode ser reativada)
-
-## 🛠️ Tecnologias Utilizadas
-
-- **.NET 8.0**
-- **ASP.NET Core Web API**
-- **Entity Framework Core 8.0**
-- **Entity Framework InMemory** (desenvolvimento)
-- **SQL Server** (produção - configurável)
-- **JWT Bearer Authentication**
-- **RabbitMQ** (mensageria e eventos)
-- **Swagger/OpenAPI** (documentação)
-
-## 🗄️ Banco de Dados Dedicado
-
-Esta API segue o padrão **Database per Service**:
-
-✅ **Banco próprio**: `FcgUsersDb` (SQL Server)  
-✅ **Acesso exclusivo**: Apenas esta API acessa este banco  
-✅ **Isolamento total**: Outros microsserviços comunicam via HTTP/eventos  
-✅ **Migrations independentes**: Evolução autônoma do schema  
-
-> 📖 Para mais detalhes, veja [Estratégia de Banco de Dados](Documentacao/ESTRATEGIA_BANCO_DADOS.md)
-
-## 📦 Instalação e Execução
-
-### Pré-requisitos
-- .NET 8.0 SDK
-- Docker (para RabbitMQ - opcional mas recomendado)
-- SQL Server (opcional, para produção)
-
-### Passos
-
-1. **Restaurar pacotes NuGet:**
-```powershell
+```bash
 dotnet restore
-```
-
-2. **Subir RabbitMQ (Docker - recomendado):**
-```powershell
-docker-compose -f docker-compose.rabbitmq.yml up -d
-```
-
-3. **Executar a aplicação:**
-```powershell
+dotnet build
 dotnet run
 ```
 
-4. **Acessar o Swagger:**
-```
-http://localhost:62306/swagger
-```
+### Com Docker
 
-5. **Acessar RabbitMQ Management (opcional):**
-```
-http://localhost:15672
-Usuário: guest
-Senha: guest
+```bash
+docker build -t fcg-users-api .
+docker run -p 8080:8080 fcg-users-api
 ```
 
-> 📖 **Guia Rápido RabbitMQ:** Veja [GUIA_RABBITMQ.md](GUIA_RABBITMQ.md) para mais detalhes sobre eventos e mensageria.
+## Endpoints
 
-### Configuração do Banco de Dados
+- `POST /api/auth/register` - Registrar novo usuário
+- `POST /api/auth/login` - Autenticar usuário e obter token JWT
+- `GET /api/users` - Listar todos os usuários (requer autenticação)
+- `GET /api/users/{id}` - Obter detalhes de um usuário (requer autenticação)
 
-**Para Desenvolvimento (InMemory - Padrão):**  
-O banco está configurado para usar InMemory por padrão no `Program.cs`.  
-✅ Sem configuração necessária  
-✅ Dados são perdidos ao reiniciar (ideal para testes)
+## Eventos Publicados
 
-**Para Produção (SQL Server):**
-
-1. Edite `Program.cs` e comente a linha do InMemory
-2. Descomente a linha do SQL Server
-3. Configure a connection string em `appsettings.json`:
+### UserCreatedEvent
+**Routing Key:** `user.created`
 
 ```json
 {
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=SEU_SERVIDOR;Database=FcgUsersDb;User Id=usuario;Password=senha;TrustServerCertificate=True"
-  }
+  "userId": "guid",
+  "nome": "string",
+  "email": "string",
+  "timestamp": "datetime"
 }
 ```
-
-4. Execute as migrations:
-
-```powershell
-dotnet ef migrations add InitialCreate
-dotnet ef database update
-```
-
-> 💡 **Importante**: Esta API tem seu **próprio banco de dados dedicado** (`FcgUsersDb`). Outros microsserviços NÃO devem acessar este banco diretamente.
-
-## 🔄 Eventos de Domínio (RabbitMQ)
-
-A API publica eventos assíncronos via RabbitMQ para comunicação com outros microsserviços:
-
-| Evento | Routing Key | Quando é Disparado |
-|--------|-------------|-------------------|
-| **UsuarioCriado** | `users.created` | Novo usuário se cadastra |
-| **ContaAtivada** | `users.activated` | Usuário confirma email |
-| **SenhaAlterada** | `users.password.changed` | Usuário altera senha |
-| **PerfilAlterado** | `users.profile.changed` | Admin altera perfil |
-
-**Padrão de Comunicação:** 100% assíncrono via message broker (eventual consistency)  
-**Health Check:** `GET /health` (verifica status do RabbitMQ)
-
-> 📖 Veja documentação completa em [GUIA_RABBITMQ.md](GUIA_RABBITMQ.md) e [COMUNICACAO_ASSINCRONA_IMPLEMENTACAO.md](Documentacao/COMUNICACAO_ASSINCRONA_IMPLEMENTACAO.md)
-
----
-
-## 🔄 Próximos Passos (TODOs)
-
-- [x] ~~Adicionar autenticação JWT~~ ✅ **COMPLETO!**
-- [x] ~~Implementar autorização baseada em perfis~~ ✅ **COMPLETO!**
-- [x] ~~Implementar eventos de domínio~~ ✅ **COMPLETO!**
-- [x] ~~Implementar publicação de eventos no CadastroService~~ ✅ **COMPLETO!**
-- [x] ~~Implementar message broker (RabbitMQ)~~ ✅ **COMPLETO!**
-- [ ] Criar microsserviço de Notificações (consumer de eventos para envio de emails)
-- [ ] Criar microsserviço de Library (consumer de ContaAtivada)
-- [ ] Criar microsserviço de Audit (consumer de todos os eventos)
-- [ ] Implementar Refresh Tokens
-- [ ] Implementar Dead Letter Queue (DLQ) para eventos com falha
-- [ ] Implementar Outbox Pattern (publicação transacional)
-- [ ] Adicionar health checks avançados (DB + RabbitMQ + latência)
-- [ ] Adicionar logging estruturado (Serilog + ELK Stack)
-- [ ] Implementar rate limiting
-- [ ] Adicionar testes unitários e de integração
-- [ ] Implementar observabilidade (OpenTelemetry + Jaeger)
-- [ ] Configurar CI/CD pipeline
-- [ ] Deploy em ambiente de produção com SQL Server dedicado
-
-> 📖 **Leia também:**
-> - [Guia RabbitMQ](GUIA_RABBITMQ.md) - **Mensageria e eventos** ⭐ NOVO  
-> - [Changelog Eventos](CHANGELOG_EVENTOS.md) - **Detalhes da implementação** ⭐ NOVO  
-> - [Comunicação Assíncrona (Implementação)](Documentacao/COMUNICACAO_ASSINCRONA_IMPLEMENTACAO.md) - **Detalhes técnicos** ⭐ NOVO  
-> - [Autenticação JWT](Documentacao/AUTENTICACAO_JWT.md) - Guia completo de autenticação  
-> - [Comunicação Assíncrona](Documentacao/COMUNICACAO_ASSINCRONA.md) - Event-Driven Architecture  
-> - [Estratégia de Banco de Dados](Documentacao/ESTRATEGIA_BANCO_DADOS.md) - Como funciona o banco dedicado  
-> - [Diagrama de Microsserviços](Documentacao/DIAGRAMA_MICROSSERVICOS.md) - Arquitetura completa  
-> - [Arquitetura](Documentacao/ARQUITETURA.md) - Visão detalhada da estrutura  
-> - [Comparação com Monolito](Documentacao/COMPARACAO_MONOLITO.md) - O que mudou
-
-## 📝 Tratamento de Erros
-
-A API retorna erros padronizados no formato:
-
-```json
-{
-  "codigo": "EMAIL_DUPLICADO_DETECTADO",
-  "mensagem": "Já existe uma conta cadastrada com este e-mail."
-}
-```
-
-### Códigos de Erro Comuns
-
-- `NOME_INVALIDO`: Nome vazio ou inválido
-- `EMAIL_INVALIDO`: Formato de email inválido
-- `EMAIL_DUPLICADO_DETECTADO`: Email já cadastrado
-- `SENHA_FRACA`: Senha não atende aos requisitos
-- `TOKEN_ATIVACAO_INVALIDO`: Token de ativação não encontrado
-- `TOKEN_ATIVACAO_EXPIRADO`: Token expirou (>24h)
-- `CONTA_JA_ATIVADA`: Tentativa de reativar conta já ativa
-- `USUARIO_NAO_ENCONTRADO`: ID de usuário não existe
-- `AUTENTICACAO_RECUSADA`: Senha incorreta
-- `TENTATIVA_DE_ACESSO_BLOQUEADA`: Conta bloqueada temporariamente
-
-## 📄 Licença
-
-Este projeto faz parte do trabalho acadêmico da FIAP.

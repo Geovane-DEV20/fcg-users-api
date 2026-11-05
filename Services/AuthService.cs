@@ -1,65 +1,118 @@
-using fcg_users_api.DTOs;
-using fcg_users_api.Exceptions;
-using fcg_users_api.Models.Enums;
-using fcg_users_api.Models.ValueObjects;
-using fcg_users_api.Repositories;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using FcgUsersApi.Data;
+using FcgUsersApi.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
-namespace fcg_users_api.Services;
+namespace FcgUsersApi.Services;
 
-public class AuthService
+public class AuthService : IAuthService
 {
-    private readonly IUsuarioRepository _usuarioRepository;
-    private readonly TokenService _tokenService;
+    private readonly UsersDbContext _context;
+    private readonly IConfiguration _configuration;
+    private readonly IRabbitMqService _rabbitMqService;
     private readonly ILogger<AuthService> _logger;
 
-    public AuthService(
-        IUsuarioRepository usuarioRepository,
-        TokenService tokenService,
-        ILogger<AuthService> logger)
+    public AuthService(UsersDbContext context, IConfiguration configuration, IRabbitMqService rabbitMqService, ILogger<AuthService> logger)
     {
-        _usuarioRepository = usuarioRepository;
-        _tokenService = tokenService;
+        _context = context;
+        _configuration = configuration;
+        _rabbitMqService = rabbitMqService;
         _logger = logger;
     }
 
-    public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
+    public async Task<LoginResponse?> Register(RegisterRequest request)
     {
-        var email = new Email(request.Email);
-        
-        var usuario = await _usuarioRepository.ObterPorEmailAsync(email, cancellationToken)
-            ?? throw new NaoAutorizadoException("AUTENTICACAO_RECUSADA", "E-mail ou senha inválidos.");
-
-        // Validar senha e registrar tentativas
-        usuario.Autenticar(request.Senha, DateTime.UtcNow);
-
-        // Se chegou aqui, autenticação foi bem-sucedida
-        await _usuarioRepository.SalvarAlteracoesAsync(cancellationToken);
-
-        // Verificar se a conta está ativa
-        if (usuario.Status != StatusConta.Ativa)
+        if (await _context.Users.AnyAsync(u => u.Email == request.Email))
         {
-            throw new RegraDeNegocioException("CONTA_INATIVA", 
-                $"Conta com status '{usuario.Status}'. Apenas contas ativas podem fazer login.");
+            return null;
         }
 
-        // Gerar token JWT
-        var token = _tokenService.GerarToken(usuario);
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Nome = request.Nome,
+            Email = request.Email,
+            PasswordHash = HashPassword(request.Password),
+            CriadoEm = DateTime.UtcNow
+        };
 
-        _logger.LogInformation("Login bem-sucedido para usuário {UsuarioId} - {Email}", usuario.Id, usuario.Email.Valor);
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+
+        // Publicar evento UserCreatedEvent
+        _rabbitMqService.PublishMessage("user.created", new
+        {
+            userId = user.Id,
+            nome = user.Nome,
+            email = user.Email,
+            timestamp = DateTime.UtcNow
+        });
+
+        _logger.LogInformation($"Usuário {user.Email} registrado com sucesso. Evento UserCreatedEvent publicado.");
 
         return new LoginResponse
         {
-            Token = token,
-            ExpiresIn = 3600, // 1 hora (configurável)
-            Usuario = UsuarioResponse.DeUsuario(usuario)
+            Token = GenerateJwtToken(user),
+            UserId = user.Id,
+            Nome = user.Nome,
+            Email = user.Email
         };
     }
 
-    public async Task<UsuarioResponse> ObterUsuarioAtualAsync(Guid usuarioId, CancellationToken cancellationToken = default)
+    public async Task<LoginResponse?> Login(LoginRequest request)
     {
-        var usuario = await _usuarioRepository.ObterPorIdAsync(usuarioId, cancellationToken)
-            ?? throw new RecursoNaoEncontradoException("USUARIO_NAO_ENCONTRADO", "Usuário não encontrado.");
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+        
+        if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
+        {
+            return null;
+        }
 
-        return UsuarioResponse.DeUsuario(usuario);
+        return new LoginResponse
+        {
+            Token = GenerateJwtToken(user),
+            UserId = user.Id,
+            Nome = user.Nome,
+            Email = user.Email
+        };
+    }
+
+    public string GenerateJwtToken(User user)
+    {
+        var jwtSecret = _configuration["Jwt:Secret"] ?? "your-super-secret-key-change-this-in-production-min-32-chars";
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var key = Encoding.ASCII.GetBytes(jwtSecret);
+        
+        var tokenDescriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Name, user.Nome),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Role, user.Perfil)
+            }),
+            Expires = DateTime.UtcNow.AddHours(8),
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+        };
+
+        var token = tokenHandler.CreateToken(tokenDescriptor);
+        return tokenHandler.WriteToken(token);
+    }
+
+    private static string HashPassword(string password)
+    {
+        using var sha256 = SHA256.Create();
+        var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+        return Convert.ToBase64String(hashedBytes);
+    }
+
+    private static bool VerifyPassword(string password, string hash)
+    {
+        return HashPassword(password) == hash;
     }
 }
